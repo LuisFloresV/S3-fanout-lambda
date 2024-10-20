@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Resources:
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-upload-bucket'
+
+  OutputBucket1:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-output-bucket-1'
+
+  OutputBucket2:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-output-bucket-2'
+
+  WriteToOutputBucketsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: WriteToOutputBucketsFunction
+      Handler: index.handler
+      Runtime: nodejs18.x
+      CodeUri: write_output/
+      Timeout: 120
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - S3WritePolicy:
+            BucketName: !Ref OutputBucket1
+        - S3WritePolicy:
+            BucketName: !Ref OutputBucket2
+        - S3ReadPolicy: 
+            BucketName: !Ref UploadBucket
+      Environment:
+        Variables:
+          BUCKET_1: !Ref OutputBucket1
+          BUCKET_2: !Ref OutputBucket2
+        
+  ProcessUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: ProcessUploadFunction
+      Handler: index.handler
+      Runtime: nodejs18.x
+      CodeUri: process_upload/
+      Timeout: 120
+      Environment:
+        Variables:
+          WRITE_TO_OUTPUT_BUCKETS_FUNCTION: "WriteToOutputBucketsFunction"
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - LambdaInvokePolicy:
+            FunctionName: "WriteToOutputBucketsFunction"
+      Events:
+        UploadEvent:
+          Type: S3
+          Properties:
+            Bucket: !Ref UploadBucket  # Updated to reference the UploadBucket
+            Events: s3:ObjectCreated:Put
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: upload/
